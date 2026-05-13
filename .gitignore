@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# Data directories (large files)
+data/uploads/
+data/faiss_index/
+
+# Logs
+logs/
+
+# Gmail credentials (sensitive)
+data/gmail_creds.json
+credentials.json
+token.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+automate_reply_system.md

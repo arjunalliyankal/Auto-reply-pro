@@ -1,0 +1,38 @@
+streamlit>=1.35.0
+# Google Gemini (Legacy)
+# google-genai>=1.0.0
+groq>=0.5.0
+
+
+# LangChain modular ecosystem (v0.1+ architecture)
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+langchain-huggingface>=0.0.3
+
+# Vector store
+faiss-cpu>=1.8.0
+
+# Embeddings backend
+sentence-transformers>=2.7.0
+torch>=2.0.0
+
+# Document loaders
+pypdf>=4.0.0
+python-docx>=1.1.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.1
+unstructured>=0.13.0
+
+# Google integrations
+google-api-python-client>=2.120.0
+google-auth-oauthlib>=1.2.0
+
+# Telegram
+python-telegram-bot>=21.0
+
+# Config / env
+python-dotenv>=1.0.0
+pydantic-settings>=2.0.0
