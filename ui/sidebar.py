@@ -1,4 +1,5 @@
 import streamlit as st
+from llm.language_detector import LANGUAGE_NAMES
 
 
 def render_sidebar() -> dict:
@@ -51,6 +52,15 @@ def render_sidebar() -> dict:
         use_telegram = st.toggle("🤖 Telegram", value=False, key="use_telegram")
         use_gmail = st.toggle("📬 Gmail", value=False, key="use_gmail")
 
+        # ── Multilingual ──────────────────────────────────────────────────
+        st.markdown("### 🌐 Multilingual")
+        override_lang = st.selectbox(
+            "🔒 Force Reply Language (optional)",
+            options=["Auto-detect"] + sorted(LANGUAGE_NAMES.values()),
+            index=0,
+            key="override_lang",
+        )
+
         st.divider()
 
         # ── Coming Soon ───────────────────────────────────────────────────
@@ -69,4 +79,5 @@ def render_sidebar() -> dict:
         "gmail_creds_path": gmail_creds_path,
         "use_telegram": use_telegram,
         "use_gmail": use_gmail,
+        "override_lang": override_lang,
     }

@@ -135,11 +135,20 @@ with col_right:
                         if parsed:
                             chat_id, msg_text = parsed
                             context = retrieve(msg_text, db)
-                            reply = generate_reply("telegram", msg_text, context, config["groq_key"])
-                            tg.send_reply(chat_id, reply)
-                            entry = {"channel": "Telegram", "message": msg_text, "reply": reply, "ts": time.time()}
+                            result = generate_reply("telegram", msg_text, context, config["groq_key"], config.get("override_lang", "Auto-detect"))
+                            tg.send_reply(chat_id, result["reply"])
+                            entry = {
+                                "channel": "Telegram",
+                                "message": msg_text,
+                                "reply": result["reply"],
+                                "lang_code": result["language"]["code"],
+                                "lang_name": result["language"]["name"],
+                                "lang_flag": result["language"]["flag"],
+                                "fallback": result["language"]["fallback"],
+                                "ts": time.time()
+                            }
                             log_entries.append(entry)
-                            with open(log_path, "a") as lf:
+                            with open(log_path, "a", encoding="utf-8") as lf:
                                 lf.write(json.dumps(entry) + "\n")
                 except Exception as e:
                     st.warning(f"⚠️ Telegram error: {e}")
@@ -155,12 +164,21 @@ with col_right:
                         to_addr = gm.get_header(email, "From")
                         subject = gm.get_header(email, "Subject")
                         context = retrieve(body, db)
-                        reply = generate_reply("email", body, context, config["groq_key"])
-                        gm.send_reply(to_addr, subject, reply, thread_id)
+                        result = generate_reply("email", body, context, config["groq_key"], config.get("override_lang", "Auto-detect"))
+                        gm.send_reply(to_addr, subject, result["reply"], thread_id)
                         gm.mark_as_read(email["id"])
-                        entry = {"channel": "Email", "message": body[:500], "reply": reply, "ts": time.time()}
+                        entry = {
+                            "channel": "Email",
+                            "message": body[:500],
+                            "reply": result["reply"],
+                            "lang_code": result["language"]["code"],
+                            "lang_name": result["language"]["name"],
+                            "lang_flag": result["language"]["flag"],
+                            "fallback": result["language"]["fallback"],
+                            "ts": time.time()
+                        }
                         log_entries.append(entry)
-                        with open(log_path, "a") as lf:
+                        with open(log_path, "a", encoding="utf-8") as lf:
                             lf.write(json.dumps(entry) + "\n")
                 except Exception as e:
                     st.warning(f"⚠️ Gmail error: {e}")

@@ -1,3 +1,5 @@
+from llm.language_detector import detect_language, LANGUAGE_NAMES, LANGUAGE_FLAGS
+
 SYSTEM_PROMPT = """SYSTEM PROMPT — AutoReply Pro Business Reply Engine
 ====================================================
 
@@ -40,6 +42,16 @@ CORE BEHAVIOR RULES
    - For Telegram, keep the reply under 300 words unless the question demands detail.
    - Never output raw JSON, code blocks, or internal metadata in the reply.
 
+6. LANGUAGE MATCHING — HIGHEST PRIORITY RULE
+   - The prompt will always specify a "Detected Language" field.
+   - You MUST compose your entire reply in that detected language.
+   - This rule overrides everything else, including the language of the knowledge base context.
+   - If the business context is in English but the customer wrote in Arabic, your reply must be in Arabic.
+   - Translate any relevant facts, prices, policies, or product names from the context naturally into the target language.
+   - Do NOT mix languages within a single reply (no English sentences in an Arabic reply, etc.).
+   - For RTL languages (Arabic, Hebrew, Urdu, Persian, etc.), ensure your phrasing is natural and grammatically correct — do not produce word-for-word translations that sound unnatural.
+   - If the detected language is a regional variant (e.g., Brazilian Portuguese vs. European Portuguese), default to the more globally common variant unless context suggests otherwise.
+
 ────────────────────────────────────────
 INPUT FORMAT YOU WILL RECEIVE
 ────────────────────────────────────────
@@ -79,13 +91,33 @@ For Telegram and other channels, output the reply text directly with no extra fo
 """
 
 
-def build_user_prompt(channel: str, message: str, context_chunks: list[str]) -> str:
+def build_user_prompt(channel: str, message: str, context_chunks: list[str], override_lang: str = "Auto-detect") -> tuple[str, dict]:
     """
     Assembles the user-facing RAG prompt from channel type, incoming message,
-    and retrieved context chunks.
+    and retrieved context chunks, incorporating detected or overridden language.
     """
+    if override_lang and override_lang != "Auto-detect":
+        lang_code = "en"
+        for code, name in LANGUAGE_NAMES.items():
+            if name == override_lang:
+                lang_code = code
+                break
+        lang = {
+            "code": lang_code,
+            "name": override_lang,
+            "flag": LANGUAGE_FLAGS.get(lang_code, "🌐"),
+            "confidence": "high",
+            "fallback": False
+        }
+    else:
+        lang = detect_language(message)
+
     context_text = "\n---\n".join(context_chunks)
-    return f"""Channel: {channel}
+    
+    prompt = f"""Channel: {channel}
+Detected Language: {lang['name']} ({lang['code']})
+IMPORTANT: You MUST respond ONLY in {lang['name']}. Do not switch to any other language, even if the knowledge base context is in a different language. Translate any relevant information from the context into {lang['name']} naturally.
+
 Incoming Message:
 \"\"\"
 {message}
@@ -96,3 +128,4 @@ Retrieved Business Context:
 {context_text}
 \"\"\"
 """
+    return prompt, lang

@@ -7,7 +7,8 @@ def generate_reply(
     message: str,
     context_chunks: list[str],
     api_key: str,
-) -> str:
+    override_lang: str = "Auto-detect",
+) -> dict:
     """
     Orchestrates retrieval → generation pipeline.
 
@@ -16,9 +17,16 @@ def generate_reply(
         message: Raw incoming message text.
         context_chunks: Retrieved knowledge base chunks.
         api_key: Groq API key.
+        override_lang: Forced language name (optional).
 
     Returns:
-        Generated reply string ready to send.
+        A dictionary containing:
+        - "reply": The generated reply string.
+        - "language": Info dictionary with keys code, name, flag, confidence, fallback.
     """
-    user_prompt = build_user_prompt(channel, message, context_chunks)
-    return get_groq_response(SYSTEM_PROMPT, user_prompt, api_key)
+    user_prompt, lang_info = build_user_prompt(channel, message, context_chunks, override_lang)
+    reply_text = get_groq_response(SYSTEM_PROMPT, user_prompt, api_key)
+    return {
+        "reply": reply_text,
+        "language": lang_info,
+    }
