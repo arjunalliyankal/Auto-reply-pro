@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     top_k_chunks: int = 4
     poll_interval: int = 5
 
+    # MongoDB logging
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db_name: str = "autoreply_pro"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

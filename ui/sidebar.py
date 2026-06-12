@@ -1,5 +1,6 @@
 import streamlit as st
 from llm.language_detector import LANGUAGE_NAMES
+from config.settings import settings
 
 
 def render_sidebar() -> dict:
@@ -7,8 +8,9 @@ def render_sidebar() -> dict:
     Renders the sidebar configuration panel and returns collected values.
 
     Returns:
-        dict with keys: gemini_key, telegram_key, gmail_creds_path,
-                        use_telegram, use_gmail
+        dict with keys: groq_key, telegram_key, gmail_creds_path,
+                        use_telegram, use_gmail, override_lang,
+                        mongo_uri, db_name
     """
     with st.sidebar:
         st.markdown("## ⚙️ Configuration")
@@ -47,6 +49,31 @@ def render_sidebar() -> dict:
 
         st.divider()
 
+        # ── MongoDB Config ────────────────────────────────────────────────
+        st.markdown("### 🗄️ MongoDB")
+        mongo_uri = st.text_input(
+            "MongoDB URI",
+            value=settings.mongo_uri,
+            key="mongo_uri",
+            help="Local: mongodb://localhost:27017 · Atlas: mongodb+srv://...",
+        )
+        db_name = st.text_input(
+            "Database Name",
+            value=settings.mongo_db_name,
+            key="db_name",
+        )
+
+        if st.button("🔌 Test Connection", key="test_mongo"):
+            try:
+                from pymongo import MongoClient
+                c = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+                c.admin.command("ping")
+                st.success("✅ MongoDB connected")
+            except Exception as e:
+                st.error(f"❌ {e}")
+
+        st.divider()
+
         # ── Channel Toggles ───────────────────────────────────────────────
         st.markdown("### 📡 Active Channels")
         use_telegram = st.toggle("🤖 Telegram", value=False, key="use_telegram")
@@ -74,10 +101,12 @@ def render_sidebar() -> dict:
         )
 
     return {
-        "groq_key": groq_key,
-        "telegram_key": telegram_key,
+        "groq_key":        groq_key,
+        "telegram_key":    telegram_key,
         "gmail_creds_path": gmail_creds_path,
-        "use_telegram": use_telegram,
-        "use_gmail": use_gmail,
-        "override_lang": override_lang,
+        "use_telegram":    use_telegram,
+        "use_gmail":       use_gmail,
+        "override_lang":   override_lang,
+        "mongo_uri":       mongo_uri,
+        "db_name":         db_name,
     }

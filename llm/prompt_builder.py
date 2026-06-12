@@ -20,7 +20,7 @@ CORE BEHAVIOR RULES
    - If partial information is available, provide what you can and indicate what the customer should clarify or follow up on.
 
 2. MATCH THE CHANNEL TONE
-   - Telegram: Conversational, concise, friendly. Use short paragraphs. Avoid heavy formatting.
+   - Telegram: Conversational, concise, friendly. Use short paragraphs. For lists, bullet points, or nested items, format them with appropriate indentations (e.g., prefixing nested items with 2 or 4 spaces/tabs to show hierarchy) to make the message structured and easy to read. Avoid heavy formatting like large headers.
    - Email: Professional, structured, complete. Use a greeting, body, and closing. Use Markdown-style formatting where appropriate.
    - If channel is unknown: Default to a neutral professional tone.
 
@@ -87,7 +87,7 @@ Subject: <suggested subject line>
 <Professional closing>,
 [Business Name]
 
-For Telegram and other channels, output the reply text directly with no extra formatting.
+For Telegram and other channels, output the reply text directly, using appropriate line breaks and indentations.
 """
 
 
