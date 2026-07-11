@@ -1,6 +1,10 @@
 import os.path
+import os
 import base64
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+from email.mime.application import MIMEApplication
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -103,6 +107,39 @@ class GmailChannel(BaseChannel):
             ).execute()
         except Exception as e:
             print(f"[Gmail] Error sending reply: {e}")
+
+    def send_reply_with_images(
+        self, to: str, subject: str, body: str, thread_id: str, images: list[dict]
+    ) -> None:
+        """Send a reply with any matched images as MIME attachments."""
+        try:
+            message = MIMEMultipart()
+            message["to"]      = to
+            message["subject"] = f"Re: {subject}"
+            message.attach(MIMEText(body))
+
+            for img in images:
+                path = img["file_path"]
+                ext = path.lower().split('.')[-1]
+                with open(path, "rb") as f:
+                    file_data = f.read()
+                    if ext == "pdf":
+                        mime_attachment = MIMEApplication(file_data, _subtype="pdf")
+                    else:
+                        mime_attachment = MIMEImage(file_data)
+                        
+                mime_attachment.add_header(
+                    "Content-Disposition", "attachment",
+                    filename=os.path.basename(path)
+                )
+                message.attach(mime_attachment)
+
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+            self.service.users().messages().send(
+                userId="me", body={"raw": raw, "threadId": thread_id}
+            ).execute()
+        except Exception as e:
+            print(f"[Gmail] Error sending reply with images: {e}")
 
     def mark_as_read(self, message_id: str) -> None:
         """Mark a message as read by removing the UNREAD label."""

@@ -1,6 +1,8 @@
 import os
+import json
 import streamlit as st
 from ingestion.loader import load_document
+from ingestion.image_extractor import extract_images_from_pdf   # NEW
 from rag.vector_store import build_index
 from ingestion.supported_formats import SUPPORTED_FORMATS
 
@@ -34,7 +36,8 @@ def render_file_uploader() -> bool:
         with col2:
             if st.button("🔄 Build Knowledge Base", use_container_width=True):
                 os.makedirs("data/uploads", exist_ok=True)
-                all_docs = []
+                all_docs       = []
+                all_image_meta = []   # NEW
                 progress = st.progress(0, text="Processing documents…")
                 for i, f in enumerate(uploaded_files):
                     path = f"data/uploads/{f.name}"
@@ -45,16 +48,39 @@ def render_file_uploader() -> bool:
                         all_docs.extend(docs)
                     except Exception as e:
                         st.warning(f"⚠️ Could not load `{f.name}`: {e}")
+
+                    # NEW: extract images if it's a PDF
+                    if f.name.lower().endswith(".pdf"):
+                        try:
+                            images = extract_images_from_pdf(path)
+                            all_image_meta.extend(images)
+                        except Exception as e:
+                            st.warning(f"⚠️ Could not extract images from `{f.name}`: {e}")
+
                     progress.progress(
                         (i + 1) / len(uploaded_files),
                         text=f"Processing {f.name}…",
                     )
                 if all_docs:
-                    with st.spinner("Building FAISS index…"):
+                    with st.spinner("Building FAISS text index…"):
                         build_index(all_docs)
+                        
+                    # PRESERVE MANUAL UPLOADS
+                    if os.path.exists("data/image_metadata.json"):
+                        with open("data/image_metadata.json", "r", encoding="utf-8") as f:
+                            try:
+                                old_meta = json.load(f)
+                                manual_items = [m for m in old_meta if m.get("source_file") == "Manual Upload"]
+                                all_image_meta.extend(manual_items)
+                            except json.JSONDecodeError:
+                                pass
+
+                    with open("data/image_metadata.json", "w", encoding="utf-8") as f:
+                        json.dump(all_image_meta, f, indent=2)
                     st.success(
-                        f"✅ Knowledge base built from {len(uploaded_files)} file(s) "
-                        f"({len(all_docs)} document chunks loaded)"
+                        f"✅ Knowledge base built: {len(uploaded_files)} file(s), "
+                        f"{len(all_docs)} text chunk(s), "
+                        f"{len(all_image_meta)} image(s) indexed for visual replies."
                     )
                     built = True
                 else:

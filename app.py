@@ -10,7 +10,7 @@ from ui.sidebar import render_sidebar
 from ui.file_uploader import render_file_uploader
 from ui.live_log import render_live_log
 from ui.channel_config import render_channel_config
-from rag.vector_store import load_index
+from rag.vector_store import load_index        # NEW
 from llm.reply_generator import generate_reply
 from channels.telegram_channel import TelegramChannel
 from channels.gmail_channel import GmailChannel
@@ -113,12 +113,14 @@ with ctrl_col:
         mongo_uri = config["mongo_uri"]
         db_name   = config["db_name"]
 
-        # Load FAISS index
+        # Load FAISS text index
         try:
             db = load_index()
         except Exception as e:
             st.error(f"❌ Failed to load knowledge base: {e}")
             st.stop()
+
+        # Image metadata will be hot-reloaded inside the polling loop
 
         # Instantiate channels
         tg = TelegramChannel(config["telegram_key"]) if config["use_telegram"] and config["telegram_key"] else None
@@ -143,6 +145,14 @@ with log_col:
 # ── Automation polling loop ───────────────────────────────────────────────
 if start_btn:
     while not stop_btn:
+        # Hot-reload image metadata so manual uploads are instantly available
+        import json
+        if os.path.exists("data/image_metadata.json"):
+            with open("data/image_metadata.json", "r", encoding="utf-8") as f:
+                image_metadata = json.load(f)
+        else:
+            image_metadata = []
+
         # ── Telegram ──────────────────────────────────────────────────
         if tg:
             try:
@@ -183,9 +193,14 @@ if start_btn:
                         user_id=canonical_id,
                         mongo_uri=mongo_uri,
                         db_name=db_name,
+                        available_images=image_metadata,            # ← NEW (LLM selection)
                         override_lang=config.get("override_lang", "Auto-detect"),
                     )
-                    tg.send_reply(chat_id, result["reply"])
+                    # Use image-aware send if images matched  ← NEW
+                    if result.get("images"):
+                        tg.send_reply_with_images(chat_id, result["reply"], result["images"])
+                    else:
+                        tg.send_reply(chat_id, result["reply"])
                     entry = {
                         "channel":      "Telegram",
                         "canonical_id": canonical_id,
@@ -234,9 +249,17 @@ if start_btn:
                         user_id=canonical_id,
                         mongo_uri=mongo_uri,
                         db_name=db_name,
+                        available_images=image_metadata,                # ← NEW (LLM selection)
                         override_lang=config.get("override_lang", "Auto-detect"),
                     )
-                    gm.send_reply(to_addr, subject, result["reply"], thread_id)
+                    # Use image-aware send if images matched  ← NEW
+                    if result.get("images"):
+                        gm.send_reply_with_images(
+                            to_addr, subject, result["reply"],
+                            thread_id, result["images"]
+                        )
+                    else:
+                        gm.send_reply(to_addr, subject, result["reply"], thread_id)
                     gm.mark_as_read(email["id"])
                     entry = {
                         "channel":      "Email",
@@ -265,4 +288,75 @@ if start_btn:
 
 else:
     render_live_log([], log_container)
+
+# ── Attachments Library ───────────────────────────────────────────────────────
+st.divider()
+st.markdown(
+    "<h3 style='text-align:center; margin-bottom:.25rem;'>🖼️ Attachments Library</h3>",
+    unsafe_allow_html=True,
+)
+_, img_col, _ = st.columns([1, 6, 1])
+
+import json
+if os.path.exists("data/image_metadata.json"):
+    with open("data/image_metadata.json", "r", encoding="utf-8") as f:
+        loaded_image_meta = json.load(f)
+else:
+    loaded_image_meta = []
+
+
+with img_col:
+    if not loaded_image_meta:
+        st.info(
+            "No attachments extracted yet. Upload a PDF to automatically extract embedded images, "
+            "or use the manual upload form below."
+        )
+    else:
+        st.write(f"**{len(loaded_image_meta)} attachment(s) available for LLM matching**")
+        cols = st.columns(2)  # Use 2 columns so we have enough room for the description
+        for i, meta in enumerate(loaded_image_meta):
+            with cols[i % 2]:
+                fname = os.path.basename(meta["file_path"])
+                if fname.lower().endswith(".pdf"):
+                    # We can't render a PDF perfectly in st.image. Show an icon instead.
+                    st.markdown(f"📄 **{fname}** (PDF Document)")
+                else:
+                    st.image(
+                        meta["file_path"],
+                        caption=fname,
+                        use_container_width=True,
+                    )
+                with st.expander("Show LLM Reference Description"):
+                    st.caption(f"**Source:** {meta['source_file']} (Page {meta['page_number']})")
+                    st.write(meta["context_text"])
+                    
+    # MANUAL UPLOAD
+    st.divider()
+    st.subheader("➕ Add Manual Attachment")
+    with st.expander("Upload independent image or PDF"):
+        with st.form("manual_attachment_form", clear_on_submit=True):
+            manual_file = st.file_uploader("Select file", type=["png", "jpg", "jpeg", "pdf"])
+            manual_desc = st.text_area(
+                "Description", 
+                help="Tell the LLM what this file is about and when it should use it. E.g. 'Use this to show the pricing tiers.'"
+            )
+            submitted = st.form_submit_button("Add to Library")
+
+            if submitted and manual_file and manual_desc.strip():
+                os.makedirs("data/images", exist_ok=True)
+                file_path = f"data/images/{manual_file.name}"
+                with open(file_path, "wb") as f:
+                    f.write(manual_file.getbuffer())
+
+                new_meta = {
+                    "file_path": file_path,
+                    "source_file": "Manual Upload",
+                    "page_number": "-",
+                    "context_text": manual_desc.strip()
+                }
+                loaded_image_meta.append(new_meta)
+                with open("data/image_metadata.json", "w", encoding="utf-8") as out_f:
+                    json.dump(loaded_image_meta, out_f, indent=2)
+                st.success(f"Added {manual_file.name} to the library!")
+                st.rerun()
 

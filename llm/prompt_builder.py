@@ -53,6 +53,18 @@ CORE BEHAVIOR RULES
    - If the detected language is a regional variant (e.g., Brazilian Portuguese vs. European Portuguese), default to the more globally common variant unless context suggests otherwise.
 
 ────────────────────────────────────────
+IMAGE ATTACHMENT AWARENESS
+────────────────────────────────────────
+
+8. ATTACHING FILES / IMAGES
+   - If "Available Attachments (Images/PDFs) in Library" are provided, evaluate their descriptions closely.
+   - If an attachment strongly supports your reply (e.g. they ask for a certificate, campus photo, product guide, etc.), include its ID at the very end of your response using the exact format: [ATTACH: filename.ext]
+   - Example 1: "Yes, you can see our sample certificate below. [ATTACH: cert.png]"
+   - Example 2: "Here is the campus layout. [ATTACH: abc.jpg]"
+   - You may attach multiple images if needed. Our system will parse and remove the tags before sending.
+   - DO NOT invent image IDs. Use only the exact IDs listed in the prompt.
+
+────────────────────────────────────────
 INPUT FORMAT YOU WILL RECEIVE
 ────────────────────────────────────────
 
@@ -91,10 +103,18 @@ For Telegram and other channels, output the reply text directly, using appropria
 """
 
 
-def build_user_prompt(channel: str, message: str, context_chunks: list[str], override_lang: str = "Auto-detect") -> tuple[str, dict]:
+def build_user_prompt(
+    channel: str,
+    message: str,
+    context_chunks: list[str],
+    override_lang: str = "Auto-detect",
+    available_images: list[dict] = None,   # NEW: array of image metadata
+) -> tuple[str, dict]:
     """
     Assembles the user-facing RAG prompt from channel type, incoming message,
     and retrieved context chunks, incorporating detected or overridden language.
+    Optionally includes an 'Available Images in Library' section so the LLM
+    can natively evaluate image descriptions and attach them using a special tag.
     """
     if override_lang and override_lang != "Auto-detect":
         lang_code = "en"
@@ -113,11 +133,23 @@ def build_user_prompt(channel: str, message: str, context_chunks: list[str], ove
         lang = detect_language(message)
 
     context_text = "\n---\n".join(context_chunks)
-    
+
+    # Build the optional image note block
+    import os
+    image_note = ""
+    if available_images:
+        img_lines = []
+        for img in available_images[:20]: # cap at 20 images to save tokens
+            fname = os.path.basename(img["file_path"])
+            desc = img["context_text"][:350].replace('\n', ' ')
+            img_lines.append(f"- ID: {fname} | Description: {desc}")
+        img_text = "\n".join(img_lines)
+        image_note = f"\nAvailable Attachments (Images/PDFs) in Library:\n{img_text}\n"
+
     prompt = f"""Channel: {channel}
 Detected Language: {lang['name']} ({lang['code']})
 IMPORTANT: You MUST respond ONLY in {lang['name']}. Do not switch to any other language, even if the knowledge base context is in a different language. Translate any relevant information from the context into {lang['name']} naturally.
-
+{image_note}
 Incoming Message:
 \"\"\"
 {message}

@@ -1,4 +1,5 @@
 import requests
+import os
 from channels.base import BaseChannel
 
 
@@ -42,6 +43,42 @@ class TelegramChannel(BaseChannel):
             )
         except Exception as e:
             print(f"[Telegram] Error sending reply: {e}")
+
+    def send_photo(self, chat_id: int, image_path: str, caption: str = "") -> None:
+        """Send a single image file to a Telegram chat."""
+        try:
+            with open(image_path, "rb") as img:
+                requests.post(
+                    f"{self.base_url}/sendPhoto",
+                    data={"chat_id": chat_id, "caption": caption[:1024]},
+                    files={"photo": (os.path.basename(image_path), img)},
+                    timeout=15,
+                )
+        except Exception as e:
+            print(f"[Telegram] Error sending photo: {e}")
+
+    def send_document(self, chat_id: int, file_path: str, caption: str = "") -> None:
+        """Send a document file (e.g., PDF) to a Telegram chat."""
+        try:
+            with open(file_path, "rb") as doc:
+                requests.post(
+                    f"{self.base_url}/sendDocument",
+                    data={"chat_id": chat_id, "caption": caption[:1024]},
+                    files={"document": (os.path.basename(file_path), doc, "application/pdf")},
+                    timeout=15,
+                )
+        except Exception as e:
+            print(f"[Telegram] Error sending document: {e}")
+
+    def send_reply_with_images(self, chat_id: int, text: str, images: list[dict]) -> None:
+        """Send the text reply first, then any matched images or documents."""
+        self.send_reply(chat_id, text)
+        for img in images:
+            path = img["file_path"]
+            if path.lower().endswith(".pdf"):
+                self.send_document(chat_id, path)
+            else:
+                self.send_photo(chat_id, path)
 
     def format_indentation(self, text: str) -> str:
         """
