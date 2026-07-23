@@ -5,6 +5,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
+from email.mime.audio import MIMEAudio
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -46,10 +47,10 @@ class GmailChannel(BaseChannel):
         self.service = build("gmail", "v1", credentials=creds)
 
     def get_unread_messages(self) -> list[dict]:
-        """Fetch all unread messages from the inbox."""
+        """Fetch all unread non-sent messages from the inbox."""
         try:
             results = self.service.users().messages().list(
-                userId="me", q="is:unread"
+                userId="me", q="is:unread -in:sent -in:drafts"
             ).execute()
             messages = results.get("messages", [])
             full_msgs = []
@@ -68,17 +69,27 @@ class GmailChannel(BaseChannel):
         return self.get_unread_messages()
 
     def extract_body(self, message: dict) -> str:
-        """Extract plain text body from a full Gmail message."""
-        parts = message.get("payload", {}).get("parts", [])
-        for part in parts:
-            if part.get("mimeType") == "text/plain":
-                data = part["body"].get("data", "")
-                return base64.urlsafe_b64decode(data).decode("utf-8")
-        # Fallback: try top-level body
-        body_data = message.get("payload", {}).get("body", {}).get("data", "")
-        if body_data:
-            return base64.urlsafe_b64decode(body_data).decode("utf-8")
-        return ""
+        """
+        Recursively extract plain text body from a full Gmail message.
+        Handles nested multipart/alternative and multipart/mixed structures
+        which are the standard format for most real-world emails.
+        """
+        def _find_plain(part: dict) -> str:
+            mime = part.get("mimeType", "")
+            if mime == "text/plain":
+                data = part.get("body", {}).get("data", "")
+                if data:
+                    return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+            # Recurse into nested parts
+            for sub in part.get("parts", []):
+                result = _find_plain(sub)
+                if result:
+                    return result
+            return ""
+
+        payload = message.get("payload", {})
+        body = _find_plain(payload)
+        return body
 
     def get_header(self, message: dict, name: str) -> str:
         """Extract a header value by name from a Gmail message."""
@@ -125,6 +136,8 @@ class GmailChannel(BaseChannel):
                     file_data = f.read()
                     if ext == "pdf":
                         mime_attachment = MIMEApplication(file_data, _subtype="pdf")
+                    elif ext in ("mp3", "wav", "ogg", "m4a", "flac", "opus", "aac"):
+                        mime_attachment = MIMEAudio(file_data, _subtype=ext)
                     else:
                         mime_attachment = MIMEImage(file_data)
                         

@@ -4,9 +4,8 @@ import streamlit as st
 
 # ── Colour palette for different users ───────────────────────────────────────
 _USER_COLOURS = [
-    "#667eea", "#f093fb", "#4facfe", "#43e97b",
-    "#fa709a", "#fee140", "#a18cd1", "#fda085",
-    "#84fab0", "#f6d365",
+    "#7C3AED", "#8B5CF6", "#A78BFA", "#EC4899",
+    "#F472B6", "#D946EF", "#C084FC", "#6366F1",
 ]
 
 
@@ -42,7 +41,7 @@ def render_live_log(log_entries: list[dict], container) -> None:
                 """
                 <div style="
                     text-align:center;
-                    color:#4a5568;
+                    color:#8B5CF6;
                     padding:2.5rem 0;
                     font-size:1rem;
                 ">
@@ -62,7 +61,7 @@ def render_live_log(log_entries: list[dict], container) -> None:
         total_msgs = len(log_entries)
         total_users = len(groups)
         st.markdown(
-            f"<div style='text-align:center; color:#718096; margin-bottom:.5rem;'>"
+            f"<div style='text-align:center; color:#8B5CF6; margin-bottom:.5rem;'>"
             f"💬 <b>{total_msgs}</b> message(s) across <b>{total_users}</b> user(s)"
             f"</div>",
             unsafe_allow_html=True,
@@ -106,22 +105,23 @@ def render_live_log(log_entries: list[dict], container) -> None:
                         border-radius: 16px 16px 4px 16px;
                         padding: 0.55rem 1rem;
                         max-width: 75%;
-                        color: #e2e8f0;
+                        color: #1E1B4B;
                         font-size: 0.92rem;
                     }}
                     .bubble-bot {{
                         align-self: flex-start;
-                        background: #1e2535;
-                        border: 1px solid #2d3748;
+                        background: #FFFFFF;
+                        border: 1px solid #8B5CF6;
                         border-radius: 16px 16px 16px 4px;
                         padding: 0.55rem 1rem;
                         max-width: 75%;
-                        color: #cbd5e0;
+                        color: #1E1B4B;
                         font-size: 0.92rem;
                     }}
                     .bubble-meta {{
                         font-size: 0.72rem;
-                        color: #4a5568;
+                        color: #8B5CF6;
+                        opacity: 0.8;
                         margin-top: 2px;
                     }}
                     </style>

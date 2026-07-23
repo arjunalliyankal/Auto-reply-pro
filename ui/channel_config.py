@@ -6,13 +6,13 @@ def render_channel_config() -> None:
     Renders per-channel configuration help and status information.
     This is displayed in the main panel to guide users with channel setup.
     """
-    st.markdown("## 📡 Channel Setup Guide")
+    st.markdown("##  Channel Setup Guide")
 
-    tab_tg, tab_gmail = st.tabs(["🤖 Telegram", "📬 Gmail"])
+    tab_tg, tab_gmail = st.tabs([" Telegram", " Gmail"])
 
     with tab_tg:
         st.markdown("""
-**How to set up Telegram (Free ✅)**
+**How to set up Telegram (Free )**
 
 1. Open Telegram and search for **[@BotFather](https://t.me/BotFather)**
 2. Send `/newbot` and follow the prompts to create your bot
@@ -26,7 +26,7 @@ Your bot will now auto-reply to every message it receives!
 
     with tab_gmail:
         st.markdown("""
-**How to set up Gmail (Free ✅)**
+**How to set up Gmail (Free )**
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
 2. Create a project → Enable the **Gmail API**

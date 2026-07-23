@@ -4,11 +4,11 @@ memory/identity_store.py
 Manages the user_identity collection.
 
 Responsibilities:
-  - Resolve any channel-specific ID (telegram_id, email) to a
+  - Resolve any channel-specific ID (telegram_id, whatsapp_id, email) to a
     single canonical_id (always the email address).
-  - Store and retrieve telegram_id ↔ email links.
-  - Detect whether a new Telegram user still needs to be asked for
-    their email (pending_link state).
+  - Store and retrieve telegram_id / whatsapp_id ↔ email links.
+  - Detect whether a new Telegram user still needs to be asked
+    for their email (pending_link state).
 """
 
 import logging
@@ -44,7 +44,7 @@ def _get_collection(mongo_uri: str, db_name: str):
 
             # Indexes for fast lookup in both directions
             _collection.create_index("canonical_id",  name="canonical_id_idx")
-            _collection.create_index("telegram_id",   name="telegram_id_idx",  sparse=True)
+            _collection.create_index("telegram_id",   name="telegram_id_idx",   sparse=True)
             _collection.create_index("email",          name="email_idx",         unique=True, sparse=True)
 
             logger.info("✅ user_identity connected: %s / %s", mongo_uri, db_name)

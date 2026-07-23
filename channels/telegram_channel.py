@@ -70,13 +70,28 @@ class TelegramChannel(BaseChannel):
         except Exception as e:
             print(f"[Telegram] Error sending document: {e}")
 
+    def send_audio(self, chat_id: int, file_path: str, caption: str = "") -> None:
+        """Send an audio file to a Telegram chat."""
+        try:
+            with open(file_path, "rb") as audio:
+                requests.post(
+                    f"{self.base_url}/sendAudio",
+                    data={"chat_id": chat_id, "caption": caption[:1024]},
+                    files={"audio": (os.path.basename(file_path), audio)},
+                    timeout=15,
+                )
+        except Exception as e:
+            print(f"[Telegram] Error sending audio: {e}")
+
     def send_reply_with_images(self, chat_id: int, text: str, images: list[dict]) -> None:
-        """Send the text reply first, then any matched images or documents."""
+        """Send the text reply first, then any matched images, documents, or audio files."""
         self.send_reply(chat_id, text)
         for img in images:
             path = img["file_path"]
             if path.lower().endswith(".pdf"):
                 self.send_document(chat_id, path)
+            elif path.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a', '.flac', '.opus')):
+                self.send_audio(chat_id, path)
             else:
                 self.send_photo(chat_id, path)
 
@@ -101,12 +116,20 @@ class TelegramChannel(BaseChannel):
             formatted_lines.append(leading_ws + rest_of_line)
         return "\n".join(formatted_lines)
 
-    def parse_message(self, update: dict) -> tuple[int, str] | None:
-        """Extract (chat_id, text) from a raw update dict."""
+    def parse_message(self, update: dict) -> tuple[int, str | dict] | None:
+        """Extract (chat_id, text_or_update) from a raw update dict."""
         msg = update.get("message", {})
         chat_id = msg.get("chat", {}).get("id")
-        text = msg.get("text", "")
-        if chat_id and text:
-            return chat_id, text
+        if not chat_id:
+            return None
+
+        # Return text if available
+        if "text" in msg:
+            return chat_id, msg["text"]
+
+        # Return the update dict itself if it's audio/voice
+        if "voice" in msg or "audio" in msg:
+            return chat_id, update
+
         return None
 

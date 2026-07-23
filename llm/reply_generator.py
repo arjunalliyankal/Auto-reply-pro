@@ -6,9 +6,32 @@ Full pipeline: load memory → RAG → build prompt → generate → save memory
 
 from llm.groq_client import get_groq_response
 from llm.prompt_builder import SYSTEM_PROMPT, build_user_prompt
+from llm.language_detector import detect_language
 from rag.vector_store import retrieve
-from memory.memory_store import get_recent_turns, save_turn
+from memory.memory_store import get_recent_turns, get_recent_turns_by_channel, save_turn
 from utils.mongo_logger import log_to_mongo
+
+
+def _translate_to_english(text: str, api_key: str, model: str) -> str:
+    """
+    Translate any non-English text to English so the FAISS vector store
+    (which is built from English documents) can do a meaningful similarity
+    search.  Returns the English translation, or the original text on error.
+    """
+    try:
+        translation = get_groq_response(
+            system_prompt=(
+                "You are a translation engine. "
+                "Translate the following text to English. "
+                "Output ONLY the English translation, nothing else."
+            ),
+            user_prompt=text,
+            api_key=api_key,
+            model=model,
+        )
+        return translation.strip() or text
+    except Exception:
+        return text
 
 
 def generate_reply(
@@ -52,13 +75,35 @@ def generate_reply(
     # 1. Load conversation history from MongoDB
     history = get_recent_turns(user_id, mongo_uri, db_name, n=memory_turns)
 
-    # 2. RAG retrieval — text
-    context_chunks = retrieve(message, db)
+    # 2. RAG retrieval — translate query to English first so FAISS
+    #    (built on English documents) returns meaningful chunks even
+    #    when the incoming message is in Malayalam or another language.
+    lang_check = detect_language(message)
+    if lang_check["code"] != "en":
+        retrieval_query = _translate_to_english(message, groq_api_key, model)
+    else:
+        retrieval_query = message
+    context_chunks = retrieve(retrieval_query, db)
 
     # 3. Build prompt + detect language
+    #    For Gmail (email) channel: also fetch any prior Telegram conversation
+    #    for the same canonical_id so the LLM replies with cross-channel context.
+    telegram_prior = None
+    if channel == "email":
+        tg_turns = get_recent_turns_by_channel(
+            user_id=user_id,
+            channel="telegram",
+            mongo_uri=mongo_uri,
+            db_name=db_name,
+            n=6,
+        )
+        if tg_turns:
+            telegram_prior = tg_turns
+
     prompt, lang_info = build_user_prompt(
         channel, message, context_chunks, override_lang,
-        available_images=available_images
+        available_images=available_images,
+        telegram_prior_context=telegram_prior,
     )
 
     # 4. Generate reply with injected memory
@@ -85,6 +130,13 @@ def generate_reply(
                     if img not in relevant_images:
                         relevant_images.append(img)
                     break
+
+    # Auto-attach manual uploads configured to send on first message
+    if len(history) == 0 and available_images:
+        for img in available_images:
+            if img.get("send_on_first_message"):
+                if img not in relevant_images:
+                    relevant_images.append(img)
 
     # 6. Save this turn to MongoDB chat_memory
     save_turn(

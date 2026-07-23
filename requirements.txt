@@ -34,9 +34,12 @@ google-auth-oauthlib>=1.2.0
 # Telegram
 python-telegram-bot>=21.0
 
+
 # Config / env
 python-dotenv>=1.0.0
 pydantic-settings>=2.0.0
 langdetect>=1.0.9
 pymongo
 torchvision
+pydub>=0.25.1
+static-ffmpeg>=2.5

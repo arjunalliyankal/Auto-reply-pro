@@ -128,7 +128,7 @@ def get_recent_turns(
     user_id:   str,
     mongo_uri: str,
     db_name:   str,
-    n:         int = 6,
+    n:         int = 10,
 ) -> list[dict]:
     """
     Fetch the last n complete turns (n user + n assistant messages = 2n docs)
@@ -171,6 +171,56 @@ def get_recent_turns(
             ordered.append({"role": "user",      "content": turns[ti]["user"]})
         if turns[ti]["assistant"]:
             ordered.append({"role": "assistant", "content": turns[ti]["assistant"]})
+
+    return ordered
+
+
+def get_recent_turns_by_channel(
+    user_id:   str,
+    channel:   str,
+    mongo_uri: str,
+    db_name:   str,
+    n:         int = 6,
+) -> list[dict]:
+    """
+    Fetch the last n complete turns for a user on a SPECIFIC channel only.
+    Returns OpenAI/Groq-compatible message dicts with an extra 'channel' key.
+
+    Useful for cross-channel context: e.g. fetching prior Telegram history
+    to inject into a Gmail reply prompt for the same canonical user.
+    """
+    coll = _get_collection(mongo_uri, db_name)
+    if coll is None:
+        return []
+
+    pipeline = [
+        {"$match": {"user_id": str(user_id), "channel": channel}},
+        {"$sort":  {"turn_index": -1}},
+        {"$group": {"_id": "$turn_index"}},
+        {"$limit": n},
+        {"$sort":  {"_id": 1}},
+    ]
+    recent_indices = [doc["_id"] for doc in coll.aggregate(pipeline)]
+
+    if not recent_indices:
+        return []
+
+    turns: dict[int, dict] = {}
+    for doc in coll.find(
+        {"user_id": str(user_id), "channel": channel, "turn_index": {"$in": recent_indices}},
+        sort=[("turn_index", ASCENDING)],
+    ):
+        ti = doc["turn_index"]
+        if ti not in turns:
+            turns[ti] = {"user": None, "assistant": None, "channel": channel}
+        turns[ti][doc["role"]] = doc["content"]
+
+    ordered = []
+    for ti in sorted(turns.keys()):
+        if turns[ti]["user"]:
+            ordered.append({"role": "user",      "content": turns[ti]["user"],      "channel": channel})
+        if turns[ti]["assistant"]:
+            ordered.append({"role": "assistant", "content": turns[ti]["assistant"], "channel": channel})
 
     return ordered
 

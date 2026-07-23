@@ -32,19 +32,28 @@ def render_sidebar() -> dict:
 
         # ── Gmail Credentials ─────────────────────────────────────────────
         st.markdown("### 📧 Gmail OAuth2")
+        import os as _os
+        _CREDS_PATH = "data/gmail_creds.json"
+        _TOKEN_PATH = "data/token.json"
+
+        # Auto-detect existing credentials so user doesn't re-upload every session
+        gmail_creds_path = _CREDS_PATH if _os.path.exists(_CREDS_PATH) else None
+
+        if gmail_creds_path and _os.path.exists(_TOKEN_PATH):
+            st.success("✅ Gmail already authorised (token on disk)")
+        elif gmail_creds_path:
+            st.info("ℹ️ credentials.json found — OAuth will run on first start")
+
         gmail_creds_file = st.file_uploader(
-            "Upload credentials.json",
+            "Re-upload credentials.json (only needed to change account)",
             type=["json"],
             key="gmail_creds_uploader",
         )
-        gmail_creds_path = None
         if gmail_creds_file is not None:
-            import os
-            os.makedirs("data", exist_ok=True)
-            path = "data/gmail_creds.json"
-            with open(path, "wb") as f:
+            _os.makedirs("data", exist_ok=True)
+            with open(_CREDS_PATH, "wb") as f:
                 f.write(gmail_creds_file.read())
-            gmail_creds_path = path
+            gmail_creds_path = _CREDS_PATH
             st.success("✅ credentials.json saved")
 
         st.divider()
@@ -90,10 +99,10 @@ def render_sidebar() -> dict:
 
         st.divider()
 
-        # ── Coming Soon ───────────────────────────────────────────────────
+
+        # ── Coming Soon (other channels) ──────────────────────────────────
         st.markdown("### 💡 Coming Soon (Free)")
         st.info(
-            "**WhatsApp** — via Twilio Sandbox\n\n"
             "**Discord** — via Discord Bot API\n\n"
             "**Slack** — via Slack App\n\n"
             "**Facebook Messenger** — via Meta API\n\n"

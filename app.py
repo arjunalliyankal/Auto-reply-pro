@@ -28,17 +28,17 @@ st.set_page_config(
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { background: #0e1117; }
-    [data-testid="stSidebar"] { background: #161b27; border-right: 1px solid #2d3748; }
+    [data-testid="stAppViewContainer"] { background: #F5F3FF; }
+    [data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #8B5CF6; }
     .main-title {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-size: 2.4rem;
         font-weight: 800;
         margin-bottom: 0;
     }
-    .subtitle { color: #718096; font-size: 1rem; margin-top: 0; }
+    .subtitle { color: #4C1D95; font-size: 1rem; margin-top: 0; }
     .status-pill {
         display: inline-block;
         padding: 2px 12px;
@@ -46,8 +46,8 @@ st.markdown("""
         font-size: 0.8rem;
         font-weight: 600;
     }
-    .pill-running { background: #22543d; color: #68d391; }
-    .pill-idle    { background: #2d3748; color: #a0aec0; }
+    .pill-running { background: #7C3AED; color: #FFFFFF; }
+    .pill-idle    { background: #E2E8F0; color: #475569; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,7 +74,7 @@ with ctrl_col:
     st.divider()
 
     # ── Automation controls ───────────────────────────────────────────────
-    st.markdown("## ▶️ Automation")
+    st.markdown("##  Automation")
 
     index_exists = os.path.exists("data/faiss_index")
     if not index_exists:
@@ -102,7 +102,7 @@ with ctrl_col:
     start_btn = st.button(
         "▶️ Start Automation",
         disabled=not can_start,
-        use_container_width=True,
+        width="stretch",
         type="primary",
     )
 
@@ -127,7 +127,7 @@ with ctrl_col:
         gm = GmailChannel(config["gmail_creds_path"]) if config["use_gmail"] and config["gmail_creds_path"] else None
 
         log_entries: list[dict] = []
-        stop_btn = st.button("⏹ Stop Automation", use_container_width=True)
+        stop_btn = st.button("⏹ Stop Automation", width="stretch")
 
         status_area = st.empty()
         status_area.markdown('<span class="status-pill pill-running">● Running</span>', unsafe_allow_html=True)
@@ -135,7 +135,7 @@ with ctrl_col:
 # ── Bottom section: live log full-width centered ──────────────────────────
 st.divider()
 st.markdown(
-    "<h3 style='text-align:center; margin-bottom:.25rem;'>💬 Live Reply Log</h3>",
+    "<h3 style='text-align:center; margin-bottom:.25rem;'> Live Reply Log</h3>",
     unsafe_allow_html=True,
 )
 _, log_col, _ = st.columns([1, 6, 1])
@@ -161,8 +161,23 @@ if start_btn:
                     if not parsed:
                         continue
 
-                    chat_id, msg_text = parsed
+                    chat_id, msg_input = parsed
                     tid = str(chat_id)
+
+                    # Handle audio inputs
+                    from utils.audio_processor import is_audio, transcribe_audio
+                    if is_audio(msg_input):
+                        st.info("🎙️ Transcribing voice message...")
+                        msg_text = transcribe_audio(
+                            msg_input,
+                            api_key=config["groq_key"],
+                            bot_token=config["telegram_key"]
+                        )
+                        if not msg_text:
+                            tg.send_reply(chat_id, "Sorry, I could not transcribe your voice message.")
+                            continue
+                    else:
+                        msg_text = msg_input
 
                     # Resolve canonical_id (email) for this Telegram user
                     canonical_id = resolve_canonical_id(
@@ -172,7 +187,28 @@ if start_btn:
                     if canonical_id is None:
                         # New / pending user — run onboarding flow
                         ob = handle_onboarding(tid, msg_text, mongo_uri, db_name)
-                        tg.send_reply(chat_id, ob["reply"])
+                        
+                        if ob["status"] == "success":
+                            first_msg_imgs = [img for img in image_metadata if img.get("send_on_first_message")]
+                            if first_msg_imgs:
+                                tg.send_reply_with_images(chat_id, ob["reply"], first_msg_imgs)
+                            else:
+                                tg.send_reply(chat_id, ob["reply"])
+                            
+                            # Save onboarding as a system turn so history len > 0, preventing duplicate triggers
+                            from memory.memory_store import save_turn
+                            save_turn(
+                                user_id=ob["canonical_id"],
+                                channel="telegram",
+                                user_msg=msg_text,
+                                bot_reply=ob["reply"],
+                                lang_info={"code": "en", "name": "English", "flag": "🇬🇧", "fallback": False},
+                                model="system",
+                                mongo_uri=mongo_uri,
+                                db_name=db_name
+                            )
+                        else:
+                            tg.send_reply(chat_id, ob["reply"])
 
                         if ob["status"] in ("ask_email", "waiting"):
                             # Not ready to process as a business query yet
@@ -222,18 +258,33 @@ if start_btn:
 
         # ── Gmail ─────────────────────────────────────────────────────
         if gm:
+            import email.utils as email_utils
+            import traceback
             try:
-                for email in gm.get_unread_messages():
-                    body = gm.extract_body(email)
-                    if not body.strip():
-                        continue
-                    thread_id = email["threadId"]
-                    to_addr   = gm.get_header(email, "From")
-                    subject   = gm.get_header(email, "Subject")
+                unread = gm.get_unread_messages()
+                print(f"[Gmail] Found {len(unread)} unread message(s)")
+            except Exception as e:
+                with ctrl_col:
+                    st.warning(f"⚠️ Gmail fetch error: {e}")
+                unread = []
 
-                    import email.utils as email_utils
+            for msg in unread:
+                try:
+                    body = gm.extract_body(msg)
+                    print(f"[Gmail] msg id={msg.get('id')} body_len={len(body)}")
+                    if not body.strip():
+                        print(f"[Gmail] Skipping msg {msg.get('id')} — empty body")
+                        gm.mark_as_read(msg["id"])   # mark so we don't re-process
+                        continue
+
+                    thread_id   = msg["threadId"]
+                    to_addr     = gm.get_header(msg, "From")
+                    subject     = gm.get_header(msg, "Subject")
+
                     _, clean_email = email_utils.parseaddr(to_addr)
                     clean_email = clean_email.lower()
+
+                    print(f"[Gmail] Processing from={clean_email} subject={subject!r}")
 
                     # Email address IS the canonical_id;
                     # auto-creates identity record on first contact
@@ -249,10 +300,11 @@ if start_btn:
                         user_id=canonical_id,
                         mongo_uri=mongo_uri,
                         db_name=db_name,
-                        available_images=image_metadata,                # ← NEW (LLM selection)
+                        available_images=image_metadata,
                         override_lang=config.get("override_lang", "Auto-detect"),
                     )
-                    # Use image-aware send if images matched  ← NEW
+
+                    # Use image-aware send if images matched
                     if result.get("images"):
                         gm.send_reply_with_images(
                             to_addr, subject, result["reply"],
@@ -260,7 +312,10 @@ if start_btn:
                         )
                     else:
                         gm.send_reply(to_addr, subject, result["reply"], thread_id)
-                    gm.mark_as_read(email["id"])
+
+                    gm.mark_as_read(msg["id"])
+                    print(f"[Gmail] Replied and marked read: {msg.get('id')}")
+
                     entry = {
                         "channel":      "Email",
                         "canonical_id": canonical_id,
@@ -276,9 +331,14 @@ if start_btn:
                     log_entries.append(entry)
                     with open(log_path, "a", encoding="utf-8") as lf:
                         lf.write(json.dumps(entry) + "\n")
-            except Exception as e:
-                with ctrl_col:
-                    st.warning(f"⚠️ Gmail error: {e}")
+
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    print(f"[Gmail] Error on msg {msg.get('id')}: {tb}")
+                    with ctrl_col:
+                        st.warning(f"⚠️ Gmail error (msg {msg.get('id')}): {e}")
+
+
 
         # ── Render live log into bottom container ──────────────────────
         render_live_log(log_entries, log_container)
@@ -292,7 +352,7 @@ else:
 # ── Attachments Library ───────────────────────────────────────────────────────
 st.divider()
 st.markdown(
-    "<h3 style='text-align:center; margin-bottom:.25rem;'>🖼️ Attachments Library</h3>",
+    "<h3 style='text-align:center; margin-bottom:.25rem;'> Attachments Library</h3>",
     unsafe_allow_html=True,
 )
 _, img_col, _ = st.columns([1, 6, 1])
@@ -313,50 +373,85 @@ with img_col:
         )
     else:
         st.write(f"**{len(loaded_image_meta)} attachment(s) available for LLM matching**")
-        cols = st.columns(2)  # Use 2 columns so we have enough room for the description
+        cols = st.columns(3)  # Use 3 columns to organize the attachment library
         for i, meta in enumerate(loaded_image_meta):
-            with cols[i % 2]:
+            with cols[i % 3]:
                 fname = os.path.basename(meta["file_path"])
-                if fname.lower().endswith(".pdf"):
-                    # We can't render a PDF perfectly in st.image. Show an icon instead.
+                
+                is_pdf = fname.lower().endswith(".pdf")
+                is_audio = fname.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a', '.flac', '.opus'))
+                
+                if is_pdf:
                     st.markdown(f"📄 **{fname}** (PDF Document)")
+                elif is_audio:
+                    st.markdown(f"🎵 **{fname}** (Audio File)")
+                    st.audio(meta["file_path"])
                 else:
                     st.image(
                         meta["file_path"],
                         caption=fname,
-                        use_container_width=True,
+                        width=150,  # Decreased size in UI
                     )
-                with st.expander("Show LLM Reference Description"):
-                    st.caption(f"**Source:** {meta['source_file']} (Page {meta['page_number']})")
-                    st.write(meta["context_text"])
-                    
+                
+                if meta.get("send_on_first_message"):
+                    st.markdown("⚡ *Send on first message*")
+                
+                expander_title = "Show Description" if not meta.get("send_on_first_message") else "Show Context/Description"
+                with st.expander(expander_title):
+                    src_file = meta.get("source_file", "Manual Upload")
+                    pg_num = meta.get("page_number", "-")
+                    st.caption(f"**Source:** {src_file} (Page {pg_num})")
+                    desc_text = meta.get("context_text", "").strip()
+                    st.write(desc_text if desc_text else "*(No description)*")
+                    if st.button("🗑️ Delete", key=f"del_attach_{i}"):
+                        try:
+                            if os.path.exists(meta["file_path"]):
+                                os.remove(meta["file_path"])
+                        except Exception:
+                            pass
+                        loaded_image_meta.pop(i)
+                        with open("data/image_metadata.json", "w", encoding="utf-8") as out_f:
+                            json.dump(loaded_image_meta, out_f, indent=2)
+                        st.rerun()
     # MANUAL UPLOAD
     st.divider()
     st.subheader("➕ Add Manual Attachment")
-    with st.expander("Upload independent image or PDF"):
+    with st.expander("Upload independent image, PDF, or audio file"):
         with st.form("manual_attachment_form", clear_on_submit=True):
-            manual_file = st.file_uploader("Select file", type=["png", "jpg", "jpeg", "pdf"])
+            manual_file = st.file_uploader(
+                "Select file", 
+                type=["png", "jpg", "jpeg", "pdf", "mp3", "wav", "ogg", "m4a", "flac", "opus"]
+            )
+            send_on_first_msg = st.checkbox(
+                "Send on first message", 
+                help="Automatically attach and send this file on the first message of a user conversation."
+            )
             manual_desc = st.text_area(
                 "Description", 
-                help="Tell the LLM what this file is about and when it should use it. E.g. 'Use this to show the pricing tiers.'"
+                help="Tell the LLM what this file is about. (Optional if 'Send on first message' is checked)"
             )
             submitted = st.form_submit_button("Add to Library")
 
-            if submitted and manual_file and manual_desc.strip():
-                os.makedirs("data/images", exist_ok=True)
-                file_path = f"data/images/{manual_file.name}"
-                with open(file_path, "wb") as f:
-                    f.write(manual_file.getbuffer())
+            if submitted and manual_file:
+                # Validation: Description is optional ONLY if send_on_first_msg is checked
+                if not send_on_first_msg and not manual_desc.strip():
+                    st.error("❌ Description is required unless 'Send on first message' is checked.")
+                else:
+                    os.makedirs("data/images", exist_ok=True)
+                    file_path = f"data/images/{manual_file.name}"
+                    with open(file_path, "wb") as f:
+                        f.write(manual_file.getbuffer())
 
-                new_meta = {
-                    "file_path": file_path,
-                    "source_file": "Manual Upload",
-                    "page_number": "-",
-                    "context_text": manual_desc.strip()
-                }
-                loaded_image_meta.append(new_meta)
-                with open("data/image_metadata.json", "w", encoding="utf-8") as out_f:
-                    json.dump(loaded_image_meta, out_f, indent=2)
-                st.success(f"Added {manual_file.name} to the library!")
-                st.rerun()
+                    new_meta = {
+                        "file_path": file_path,
+                        "source_file": "Manual Upload",
+                        "page_number": "-",
+                        "context_text": manual_desc.strip(),
+                        "send_on_first_message": send_on_first_msg
+                    }
+                    loaded_image_meta.append(new_meta)
+                    with open("data/image_metadata.json", "w", encoding="utf-8") as out_f:
+                        json.dump(loaded_image_meta, out_f, indent=2)
+                    st.success(f"Added {manual_file.name} to the library!")
+                    st.rerun()
 

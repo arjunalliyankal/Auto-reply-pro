@@ -14,7 +14,7 @@ def render_file_uploader() -> bool:
     Returns:
         True if a new index was just built, False otherwise.
     """
-    st.markdown("## 📁 Business Knowledge Base")
+    st.markdown("##  Business Knowledge Base")
     st.caption(
         "Upload your business documents. Supported formats: "
         + ", ".join(f"`{ext}`" for ext in SUPPORTED_FORMATS)
@@ -34,7 +34,7 @@ def render_file_uploader() -> bool:
         with col1:
             st.info(f"📄 {len(uploaded_files)} file(s) ready to process")
         with col2:
-            if st.button("🔄 Build Knowledge Base", use_container_width=True):
+            if st.button("🔄 Build Knowledge Base", width="stretch"):
                 os.makedirs("data/uploads", exist_ok=True)
                 all_docs       = []
                 all_image_meta = []   # NEW

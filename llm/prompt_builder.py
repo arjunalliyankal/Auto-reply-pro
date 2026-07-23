@@ -108,13 +108,17 @@ def build_user_prompt(
     message: str,
     context_chunks: list[str],
     override_lang: str = "Auto-detect",
-    available_images: list[dict] = None,   # NEW: array of image metadata
+    available_images: list[dict] = None,   # array of image metadata
+    telegram_prior_context: list[dict] = None,  # cross-channel Telegram turns for Gmail
 ) -> tuple[str, dict]:
     """
     Assembles the user-facing RAG prompt from channel type, incoming message,
     and retrieved context chunks, incorporating detected or overridden language.
     Optionally includes an 'Available Images in Library' section so the LLM
     can natively evaluate image descriptions and attach them using a special tag.
+    When `telegram_prior_context` is provided (for Gmail replies), a summary
+    of the user's prior Telegram conversation is injected before the current
+    message so the LLM can reply with full cross-channel awareness.
     """
     if override_lang and override_lang != "Auto-detect":
         lang_code = "en"
@@ -146,10 +150,26 @@ def build_user_prompt(
         img_text = "\n".join(img_lines)
         image_note = f"\nAvailable Attachments (Images/PDFs) in Library:\n{img_text}\n"
 
+    # Build optional cross-channel Telegram history block
+    telegram_context_note = ""
+    if telegram_prior_context:
+        tg_lines = []
+        for turn in telegram_prior_context:
+            role_label = "Customer (via Telegram)" if turn["role"] == "user" else "Assistant (via Telegram)"
+            content = turn["content"][:400].replace('\n', ' ')
+            tg_lines.append(f"  [{role_label}]: {content}")
+        tg_text = "\n".join(tg_lines)
+        telegram_context_note = (
+            f"\nPrior Telegram Conversation (same contact, different channel):\n"
+            f"\"\"\"\'\n{tg_text}\n\"\"\"\'\n"
+            f"Use this Telegram history as background context to personalise and inform your email reply. "
+            f"Do NOT mention that the user spoke with you on Telegram unless they bring it up.\n"
+        )
+
     prompt = f"""Channel: {channel}
 Detected Language: {lang['name']} ({lang['code']})
-IMPORTANT: You MUST respond ONLY in {lang['name']}. Do not switch to any other language, even if the knowledge base context is in a different language. Translate any relevant information from the context into {lang['name']} naturally.
-{image_note}
+IMPORTANT: You MUST respond ONLY in {lang['name']}. Even if the conversation history is in English or a different language, you must write your new response ONLY in {lang['name']}. Do not switch to English. Translate any relevant information from the context into {lang['name']} naturally.
+{image_note}{telegram_context_note}
 Incoming Message:
 \"\"\"
 {message}
